@@ -23,7 +23,7 @@ FEEDBACK="${2:-dense}"
 RESEARCHER_MODEL="${3:-opus}"  # Model for the *researcher* agent (not the policy LLM)
 POLICY_MODEL="${4:-gemini-3.1-pro-preview}"  # Model for the policy synthesizer LLM
 METRIC="${5:-efficiency}"  # Primary metric to optimize: efficiency or maximin
-GAME="${6:-cleanup}"  # Game: cleanup, gathering, or coop_mining
+GAME="${6:-cleanup}"  # Game: cleanup, gathering, coop_mining, nested_commons, or production_economy
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -86,6 +86,10 @@ elif [[ "$GAME" == "nested_commons" ]]; then
     GAME_ARGS="--game nested_commons --n-agents 16"
     GAME_DESC="Nested Commons with 16 agents in 4 clans on a 20x20 grid (intra-clan + inter-clan public goods + raid restraint)"
     ENV_FILE="nested_commons_env.py"
+elif [[ "$GAME" == "production_economy" ]]; then
+    GAME_ARGS="--game production_economy --n-agents 8"
+    GAME_DESC="Production Economy with 8 agents on a 15x15 grid (multi-stage production pipeline + private/public goods trade-off + threshold-triggered public payoff)"
+    ENV_FILE="production_economy_env.py"
 fi
 
 PROMPT="Read autoresearch/program.md carefully. This is your research program.
