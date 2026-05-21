@@ -16,17 +16,18 @@ import textwrap
 
 
 # Social metric definitions shown to the policy LLM.
+# Kept game-agnostic so the same template applies across environments.
 METRIC_DEFINITIONS = (
-    "- **Efficiency**: collective apple collection rate across all agents "
-    "(higher = more apples collected per step).\n"
+    "- **Efficiency**: collective reward per timestep across all agents "
+    "(higher = more reward per step).\n"
     "- **Equality**: fairness of reward distribution between agents "
     "(1.0 = perfectly equal, negative = highly unequal).\n"
-    "- **Sustainability**: long-term apple availability — measures whether "
-    "resources are preserved over the episode (higher = apples remain available "
-    "later in the episode).\n"
-    "- **Peace**: absence of aggressive beaming — counts agents not involved in "
-    "attack beam conflicts (higher = less aggression). Using the CLEAN beam to "
-    "remove waste does NOT reduce peace."
+    "- **Sustainability**: average time at which agents collect rewards "
+    "(higher = rewards keep arriving later in the episode rather than only "
+    "early on).\n"
+    "- **Peace**: absence of aggressive interactions between agents "
+    "(higher = less aggression; equals the agent count in games with no "
+    "aggression mechanic)."
 )
 
 
@@ -109,7 +110,13 @@ def build_iteration_prompt(
 def _env_description(env_factory: callable) -> str:
     """Generate a short description of the map from an env factory."""
     env = env_factory()
+    # ``n_apples`` is the apple-spawn count for apple-based games; other
+    # environments alias it to whatever they treat as a resource node count
+    # so this template stays game-agnostic.
+    n_resources = getattr(env, "n_apples", None)
+    if n_resources is None:
+        return f"{env.n_agents} agents on a {env.width}x{env.height} map"
     return (
         f"{env.n_agents} agents on a {env.width}x{env.height} map "
-        f"with ~{env.n_apples} apple spawns"
+        f"with ~{n_resources} resource nodes"
     )

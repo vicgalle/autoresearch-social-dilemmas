@@ -43,6 +43,7 @@ from llm_self_play import (
     GATHERING_CONFIG,
     COOP_MINING_CONFIG,
     NESTED_COMMONS_CONFIG,
+    PRODUCTION_ECONOMY_CONFIG,
     get_opponents,
     log,
 )
@@ -50,6 +51,7 @@ from gathering_env import make_gathering, make_gathering_large
 from cleanup_env import make_cleanup
 from coop_mining_env import make_coop_mining, make_coop_mining_large
 from nested_commons_env import make_nested_commons
+from production_economy_env import make_production_economy
 
 # --- Modifiable pipeline imports ---
 # These are the files the researcher modifies.
@@ -300,7 +302,7 @@ def parse_args():
     )
     parser.add_argument(
         "--game",
-        choices=["gathering", "cleanup", "coop_mining", "nested_commons"],
+        choices=["gathering", "cleanup", "coop_mining", "nested_commons", "production_economy"],
         default="cleanup",
     )
     parser.add_argument(
@@ -336,6 +338,8 @@ if __name__ == "__main__":
         game_config = COOP_MINING_CONFIG
     elif args.game == "nested_commons":
         game_config = NESTED_COMMONS_CONFIG
+    elif args.game == "production_economy":
+        game_config = PRODUCTION_ECONOMY_CONFIG
     else:
         game_config = GATHERING_CONFIG
 
@@ -347,6 +351,8 @@ if __name__ == "__main__":
             args.n_agents = 4 if args.map != "large" else 6
         elif args.game == "nested_commons":
             args.n_agents = 16
+        elif args.game == "production_economy":
+            args.n_agents = 8
         elif args.map == "large":
             args.n_agents = 4
         else:
@@ -363,6 +369,8 @@ if __name__ == "__main__":
                 return make_coop_mining(n_agents=args.n_agents, small=(args.map == "small"))
         elif args.game == "nested_commons":
             return make_nested_commons(n_agents=args.n_agents)
+        elif args.game == "production_economy":
+            return make_production_economy(n_agents=args.n_agents)
         elif args.map == "large":
             return make_gathering_large(n_agents=args.n_agents)
         else:

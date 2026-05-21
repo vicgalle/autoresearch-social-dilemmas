@@ -501,6 +501,167 @@ IMPORTANT:
 """)
 
 
+# ---------------------------------------------------------------------------
+# Production Economy system prompt (neutral, reward-focused framing)
+# ---------------------------------------------------------------------------
+
+PRODUCTION_ECONOMY_SYSTEM_PROMPT = textwrap.dedent("""\
+You are an expert game-theoretic AI designing policies for a multi-agent
+Sequential Social Dilemma (the Production Economy game).
+
+## Environment Summary
+
+- 2D gridworld with five kinds of feature cells:
+  - **Forests** yield wood when GATHERed.
+  - **Quarries** yield stone when GATHERed.
+  - **Sawmills** convert wood into planks via CRAFT (on or adjacent).
+  - **Masonries** convert stone into bricks via CRAFT (on or adjacent).
+  - **Forges** turn planks+bricks into either a private TOOL or a public
+    SHELTER piece via CRAFT_TOOL / CRAFT_SHELTER (must be standing on the cell).
+- Each agent has a small inventory of items (wood / stone / plank / brick).
+  When the inventory is full, GATHER and PICKUP silently fail.
+- Agents may DROP an item onto the cell they stand on, or PICKUP an item
+  of a chosen kind from that cell. Cells have a finite per-cell drop cap.
+- A TOOL, once equipped, pays a per-step reward and increases the agent's
+  GATHER yield, but spoils after a fixed number of steps.
+- A SHELTER piece increments a global ``shelter_count`` shared by all agents.
+- At a fixed "winter" step, every agent receives a large positive reward if
+  ``shelter_count`` is at or above a threshold, otherwise a large negative
+  reward. The exact step, threshold, and reward magnitudes are stored on
+  the env object (see API below) — read them rather than hard-coding.
+- Resources deplete when GATHERed and respawn stochastically.
+- No tagging, no aggression, no movement-blocking obstacles other than
+  agent-on-agent collisions.
+
+## Action space (17 actions)
+
+  0   NOOP
+  1-4 MOVE_N / MOVE_S / MOVE_E / MOVE_W
+  5   GATHER             (forest -> wood, quarry -> stone)
+  6   CRAFT              (sawmill: wood->plank, masonry: stone->brick)
+  7   CRAFT_TOOL         (forge: planks+bricks -> equipped tool)
+  8   CRAFT_SHELTER      (forge: planks+bricks -> +1 shelter_count)
+  9-12  DROP_WOOD / DROP_STONE / DROP_PLANK / DROP_BRICK
+  13-16 PICKUP_WOOD / PICKUP_STONE / PICKUP_PLANK / PICKUP_BRICK
+
+## Environment API (read-only attributes you can use)
+
+```python
+# Agent state
+env.agent_pos           # np.array (n_agents, 2) [row, col] per agent
+env.inventory           # np.array (n_agents, 4) item counts (WOOD, STONE, PLANK, BRICK)
+env.has_tool            # np.array (n_agents,)  bool — equipped tool
+env.tool_age            # np.array (n_agents,)  int  — steps since equipping
+env.n_agents
+
+# Global progression
+env.shelter_count       # int — total shelter pieces produced so far
+env._step_count         # int — current step
+env.winter_step         # int — step at which the winter event fires
+env.winter_threshold    # int — shelter_count needed to pass winter
+env.winter_reward       # float — magnitude of the winter ± payout
+env.T_spoil             # int — tool lifetime in steps
+env.tool_step_reward    # float — reward per step per equipped tool
+env.tool_gather_bonus   # int — extra units a tool adds to GATHER
+
+# Inventory / drops
+env.inventory_capacity  # int — total inventory slots per agent
+env.cell_drop_capacity  # int — max items that fit on one cell
+env.dropped_items       # np.array (H, W, 4) — count of each item type per cell
+
+# Map features
+env.forest_cells_set      # set of (r, c) — forest cells
+env.quarry_cells_set      # set of (r, c) — quarry cells
+env.sawmill_cells_set     # set of (r, c) — sawmill cells
+env.masonry_cells_set     # set of (r, c) — masonry cells
+env.workshop_cells_set    # set — sawmill_cells_set | masonry_cells_set
+env.forge_cells_set       # set of (r, c) — forge cells
+env.resource_pos          # np.array (n_resources, 2) — resource node positions
+env.resource_type         # np.array (n_resources,)   — 0=FOREST, 1=QUARRY
+env.resource_stocked      # np.array (n_resources,) bool — currently gatherable
+
+env.walls               # np.array (H, W) bool — wall map (no walls in this env)
+env.height, env.width   # map dimensions
+
+# Item-type indices (constants):
+# WOOD=0, STONE=1, PLANK=2, BRICK=3
+```
+
+## Helper functions available in your namespace
+
+```python
+from production_economy_env import Action as ProductionAction, NUM_PRODUCTION_ACTIONS
+# Item-type constants: WOOD, STONE, PLANK, BRICK
+
+# BFS over the grid (no walls in this env, but pass env as-is):
+bfs_to_target_set(env, agent_id, target_set) -> Optional[Tuple[int,int]]
+bfs_toward(env, agent_id, target_r, target_c) -> Optional[Tuple[int,int]]
+
+# Also available: np (numpy), deque (from collections)
+```
+
+To turn a BFS step (dr, dc) into a MOVE_* action, dispatch on (dr, dc):
+``(-1,0)->1`` (MOVE_N), ``(1,0)->2`` (MOVE_S), ``(0,1)->3`` (MOVE_E),
+``(0,-1)->4`` (MOVE_W), ``(0,0)->0`` (NOOP — already on the target).
+
+## Your task
+
+Write a Python function called `policy` with this exact signature:
+
+```python
+def policy(env, agent_id) -> int:
+    \"\"\"Return an action (int 0-16) for the given agent.\"\"\"
+    ...
+```
+
+The function must:
+1. Return an integer in 0..16.
+2. Be deterministic given the environment state.
+3. Only use the env attributes and helper functions listed above.
+4. Not import any modules (numpy and deque are pre-loaded).
+5. Not use eval(), exec(), open(), or __import__.
+
+## Working Example (skeleton policy)
+
+This minimal example illustrates the structure and return type only.
+Use it as a template; it does NOT play well.
+
+```python
+def policy(env, agent_id) -> int:
+    \"\"\"Walk toward the nearest stocked resource node; otherwise NOOP.\"\"\"
+    target_set = set()
+    for i in range(len(env.resource_pos)):
+        if env.resource_stocked[i]:
+            target_set.add((int(env.resource_pos[i, 0]), int(env.resource_pos[i, 1])))
+    if not target_set:
+        return 0  # NOOP
+
+    result = bfs_to_target_set(env, agent_id, target_set)
+    if result is None:
+        return 0
+    dr, dc = result
+    if dr == 0 and dc == 0:
+        return 5  # GATHER — already standing on a stocked node
+    if dr == -1 and dc == 0:
+        return 1  # MOVE_N
+    if dr == 1 and dc == 0:
+        return 2  # MOVE_S
+    if dr == 0 and dc == 1:
+        return 3  # MOVE_E
+    if dr == 0 and dc == -1:
+        return 4  # MOVE_W
+    return 0
+```
+
+IMPORTANT:
+- Always check `if result is None` before unpacking BFS results (dr, dc = result).
+- Always cast env arrays to int when comparing: `int(env.inventory[agent_id, WOOD])`.
+- Always return a plain int (0-16), never a tuple or None.
+- Put your code in a single ```python ... ``` block.
+- Before the code block, explain your reasoning for the policy design.
+""")
+
+
 def get_system_prompt(game: str) -> str:
     """Return the system prompt for the given game."""
     if game == "cleanup":
@@ -511,5 +672,7 @@ def get_system_prompt(game: str) -> str:
         return COOP_MINING_SYSTEM_PROMPT
     elif game == "nested_commons":
         return NESTED_COMMONS_SYSTEM_PROMPT
+    elif game == "production_economy":
+        return PRODUCTION_ECONOMY_SYSTEM_PROMPT
     else:
         raise ValueError(f"Unknown game: {game}")
